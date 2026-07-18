@@ -142,10 +142,13 @@ spec:
     # key: cloud.google.com/gke-nodepool   # optional explicit override
   # Declarative inventory (replaces the global JDKS/LAUNCHERS strings).
   jdks:
-    - distribution: temurin    # curated: temurin | microsoft
+    - distribution: temurin
       feature: 21
-    - distribution: microsoft
-      feature: 25
+    - distribution: zulu
+      feature: 21
+      source:
+        image: docker.io/library/azul-zulu:21
+        javaHome: /usr/lib/jvm/zulu21
   launchers:
     - jaz
   # Optional per-profile registry override for air-gapped / mirrored clusters.
@@ -198,6 +201,13 @@ entirely to mean "every node" (the default-profile fallback, §5.3).
   pool) is rejected by the webhook (§5.8), not resolved by priority.
 - `spec.registry.mirrors` configures the provisioner's copy-from-image pulls for the
   curated hosts (§5.10).
+- A custom source may be a complete vendor JDK or a jlink runtime containing a
+  platform-approved module set. The provisioner copies the source image's complete
+  root filesystem and records `source.javaHome`; the shim uses that root as the
+  sandbox userland and exposes the declared Java home at `/opt/jdk`.
+- Shared jlink runtimes are node inventory, not application payloads. Applications
+  continue to publish JARs and select the inventory token
+  `<distribution>-<feature>`.
 
 ### 5.2 Operator reconcile: one DaemonSet per profile, selected by pool label
 
@@ -240,8 +250,14 @@ type NodePoolRef struct {
 }
 
 type JDKRef struct {
-    Distribution string `json:"distribution"` // temurin | microsoft
+    Distribution string `json:"distribution"`
     Feature      int32  `json:"feature"`
+    Source       *JDKSource `json:"source,omitempty"`
+}
+
+type JDKSource struct {
+    Image    string `json:"image"`
+    JavaHome string `json:"javaHome"`
 }
 
 type RegistrySpec struct {
@@ -357,8 +373,10 @@ state, closing the "uninstall leaves drift" gap.
 
 ### 5.8 Validating webhook for `NodeProfile`
 
-A small validating admission webhook rejects malformed profiles early: unknown
-`distribution` (only `temurin`/`microsoft` are curated), empty `jdks`, invalid
+A small validating admission webhook rejects malformed profiles early: empty
+`jdks`, invalid distribution identifiers, custom distributions without a fully
+qualified image and clean absolute Java-home path, curated distributions with a
+source override, invalid
 `containerdRestart` values, and **two profiles naming the same pool** (ambiguous
 ownership — the pool-model replacement for the old priority tie-break). It also flags a
 `nodePool.key` that matches no known provider on a cluster where auto-detection found a
@@ -433,8 +451,8 @@ The implementation is end-to-end-test driven. Additions:
   named-pool profile plus the catch-all default, assert each node is owned by exactly one
   DaemonSet (named pool excluded from the default); delete a profile and assert the
   finalizer blocks GC until cleanup completes.
-- **Webhook unit:** rejects unknown distribution / empty jdks / two profiles naming the
-  same pool / unknown pool key.
+- **Webhook unit:** rejects missing or malformed custom JDK sources / empty jdks /
+  two profiles naming the same pool / unknown pool key.
 - **e2e tier:** a new tier proving two pool profiles materialize different inventories on
   their pools, that a node the autoscaler adds to a pool is provisioned without manual
   annotation, and that `kubectl delete nodeprofile` + cleanup reverses host state

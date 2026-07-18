@@ -328,31 +328,41 @@ every opted-in node. Nothing is baked into application artifacts.
 ```yaml
 # values.yaml (brewlet-operator Helm chart)
 jdks:
-  - distribution: temurin      # curated distributions: temurin, microsoft
+  - distribution: temurin      # curated source mapping
     feature: 21
   - distribution: microsoft
     feature: 25
+  - distribution: zulu         # custom source mapping
+    feature: 21
+    source:
+      image: docker.io/library/azul-zulu:21
+      javaHome: /usr/lib/jvm/zulu21
 ```
 
 On each node the provisioner installs every listed JDK under
 `/opt/brewlet/jdks/<distribution>-<feature>/` as a **read-only, shared** root, via
 **copy-from-image** — the sole acquisition mechanism. The vendor's official JDK
-image is pulled through the host containerd and its JDK tree copied onto the host
-`hostPath`, so no package manager touches the host and every root arrives by a
-content-addressable (digest-verified) pull:
+image is pulled through the host containerd and its complete root filesystem is
+mounted and copied onto the host `hostPath`, so no package manager touches the
+host and every root arrives by a content-addressable (digest-verified) pull:
 
 ```bash
 # inside the provisioner, per JDK, for the node's arch:
 ctr image pull mcr.microsoft.com/openjdk/jdk:25-ubuntu
-ctr run --rm --mount type=bind,src=/opt/brewlet/jdks,dst=/out,options=rbind:rw \
-  mcr.microsoft.com/openjdk/jdk:25-ubuntu cp -a /opt/java/openjdk /out/microsoft-25
+ctr images mount mcr.microsoft.com/openjdk/jdk:25-ubuntu /tmp/jdk-root
+cp -a /tmp/jdk-root/. /opt/brewlet/jdks/microsoft-25/
+ctr images unmount /tmp/jdk-root
 ```
 
-The result — `/opt/brewlet/jdks/temurin-21/bin/java` — is exactly what the shim's
-`selectJDK` looks for (§6.1). JDK roots are **versioned and additive**: patching
-means dropping in a new root and retiring old ones; running pods are unaffected
-until they restart. Install one root per node architecture (amd64/arm64); the
-JAR is arch-neutral so the same artifact runs on either.
+The result contains the source image's userland and a `.brewlet-java-home` file
+recording the JDK or jlink runtime location within it. The shim uses the complete
+root as the sandbox lower layer and exposes that Java home at `/opt/jdk` (§6.1).
+This permits both full vendor JDKs and centrally curated jlink runtimes with an
+administrator-approved module set. The latter is installed once per node pool;
+it is not carried in each application artifact. Roots are **versioned and
+additive**: patching means dropping in a new root and retiring old ones; running
+pods are unaffected until they restart. Install one root per node architecture
+(amd64/arm64); the JAR is arch-neutral so the same artifact runs on either.
 
 > **Configuration interface (PoC).** The reference provisioner takes the JDK
 > inventory as a `JDKS` env var — a comma-separated list of `<distribution>-<feature>`
@@ -360,8 +370,9 @@ JAR is arch-neutral so the same artifact runs on either.
 > `LAUNCHERS` env var (a comma-separated list of launcher names, e.g. `jaz`;
 > `java` is implicit). `temurin` and `microsoft` are the curated distributions,
 > each mapped to its official image (`eclipse-temurin:<feature>`,
-> `mcr.microsoft.com/openjdk/jdk:<feature>-ubuntu`); only these two canonical
-> names are accepted, and any other fails fast. Full operator reference, including
+> `mcr.microsoft.com/openjdk/jdk:<feature>-ubuntu`). Other distributions declare
+> `source.image` and `source.javaHome` on their `NodeProfile`; the operator renders
+> indexed custom-source env variables consumed by the provisioner. Full operator reference, including
 > the distribution → image matrix, is in
 > [`provisioner/README.md`](https://github.com/brewlet/brewlet/blob/main/provisioner/README.md).
 
@@ -496,6 +507,8 @@ spec:
   reconciles each profile into its own `brewlet-node-provisioner-<profile>`
   DaemonSet whose pod `nodeAffinity` is the profile's pool and whose `JDKS` /
   `LAUNCHERS` / `MIRRORS` / `BREWLET_CONTAINERD_RESTART` env come from the spec.
+  Non-curated JDK image and Java-home mappings are rendered as indexed
+  `JDK_CUSTOM_SOURCE_*` env variables.
 - **Registry mirrors (air-gap).** `spec.registry.mirrors` maps a curated upstream
   host to an internal mirror; the provisioner rewrites every copy-from-image pull
   ref through it, so no node ever reaches out to `docker.io` / `mcr.microsoft.com`.
@@ -719,8 +732,9 @@ ensures a webhook outage never blocks workloads.
 >
 > **NodeProfile validation.** The same binary also serves a *validating* webhook
 > at `/validate-nodeprofiles` (`NodeProfileValidator`): on `NodeProfile`
-> CREATE/UPDATE it rejects an empty JDK list, non-curated distributions, an
-> invalid `containerdRestart`, and — after listing existing profiles — two
+> CREATE/UPDATE it rejects an empty JDK list, custom distributions without a valid
+> image/Java-home source, curated distributions that try to override their source,
+> an invalid `containerdRestart`, and — after listing existing profiles — two
 > profiles naming the same pool (`PoolConflict`). Unlike the pod webhook it is
 > `failurePolicy: Fail`: a malformed profile would mis-provision the whole fleet,
 > so it is rejected up front (§5.6).
@@ -1056,8 +1070,10 @@ caching and JVM features:
    `entry.classPath`, emitting `java -cp … -p … -m …` so a modular app can carry
    automatic-module or non-modular libraries on the class path
    ([§8.1](https://github.com/brewlet/site/blob/main/docs/layered-classpath-deployment.md)).
-   `jlink`/`jmod` runtime images stay out
-   of scope (they bundle a JVM, which Brewlet exists to remove).
+   Application artifacts do not carry `jlink` runtimes or `.jmod` files. A
+   platform administrator may install a shared jlink runtime, including centrally
+   approved modules, as node inventory through a `NodeProfile` custom source; the
+   application remains an ordinary JAR artifact.
 4. **Artifact format standardization** — pursue a shared/standard media type so the
    ecosystem (registries, scanners, CLIs) recognizes "JAR-as-OCI-artifact"?
 5. **Strong multi-tenancy** — is runc isolation sufficient, or is Kata/gVisor the
