@@ -4,14 +4,12 @@
 - **Target spec sections:** new **§5.6** (Node profiles) + amendments to **§8.1**,
   **§8.3**, **§14** — landed.
 - **Related code:** [`brewlet/kubernetes`](https://github.com/brewlet/kubernetes):
-  the root Go module (`api/nodeprofile/v1alpha1`,
-  `internal/controller/nodeprofile_*.go`, `internal/admission/nodeprofile_webhook.go`,
-  `internal/brewlet` vocabulary), plus
-  [`brewlet/brewlet`](https://github.com/brewlet/brewlet)'s
-  `provisioner/entrypoint.sh`,
-  `charts/brewlet` (CRD + `nodeprofiles.yaml` template + `profiles` values +
-  validating webhook), `deploy/nodeprofile-crd.yaml`,
-  `deploy/sample-nodeprofile.yaml`
+  `api/nodeprofile/v1alpha1`, `internal/controller/nodeprofile_*.go`,
+  `internal/admission/nodeprofile_webhook.go`, the `internal/brewlet` vocabulary,
+  `charts/brewlet` (CRD, `nodeprofiles.yaml`, profile values, and validating
+  webhook), `deploy/nodeprofile-crd.yaml`, and
+  `deploy/sample-nodeprofile.yaml`; [`brewlet/brewlet`](https://github.com/brewlet/brewlet):
+  `provisioner/entrypoint.sh`
 - **Related proposals (split out of the original draft):**
   - [0002 — Validated containerd reconfiguration & readiness smoke gate](0002-validated-node-reconfig.md)
     (consumed here via `rollout.containerdRestart` / `rollout.validate`).

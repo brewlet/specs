@@ -23,3 +23,13 @@ section using the existing `§N` convention (for example, `§4.2`).
 
 Changes here describe the contract; implementation-specific behavior belongs in
 the repository that owns that component.
+
+## Supporting repositories
+
+- [brewlet/site](https://github.com/brewlet/site) — user and operator documentation
+- [brewlet/integration-tests](https://github.com/brewlet/integration-tests) —
+  cross-repository validation and fixture applications
+
+The repositories are independently versioned. A specification change that affects
+multiple implementations should use linked pull requests in each owning repository
+and a corresponding integration-test update where appropriate.

@@ -3,8 +3,8 @@
 - **Status:** Draft
 - **Target spec sections:** amend **§5.2**, **§8.3** (document the labels as a public,
   versioned contract)
-- **Related code:** [`brewlet/kubernetes`](https://github.com/brewlet/kubernetes)'s
-  `internal/brewlet/labels.go`; [`brewlet/brewlet`](https://github.com/brewlet/brewlet)'s
+- **Related code:** [`brewlet/kubernetes`](https://github.com/brewlet/kubernetes):
+  `internal/brewlet/labels.go`; [`brewlet/brewlet`](https://github.com/brewlet/brewlet):
   `provisioner/entrypoint.sh` (`label_node`)
 - **Split from:** the original [0001 (node profiles)](0001-node-profiles.md) draft (the
   autoscaling-label contract 0001 depends on, §3 / §10). This is a

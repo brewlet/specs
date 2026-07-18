@@ -583,8 +583,9 @@ The artifact reference and manifest digest are stamped **cluster-side, not in th
 shim**: the `brewlet-admission` webhook (§8.3, implemented) stamps the
 `brewlet.sh/artifact-ref` and `brewlet.sh/artifact-digest` annotations onto pods
 using `runtimeClassName: brewlet`, so the shim can resolve the artifact from the
-content store. On non-Linux dev hosts only the portable bundle-assembly core
-builds; `make e2e-linux` exercises the real runc path.
+content store. On non-Linux dev hosts only the portable bundle-assembly core builds locally;
+[integration-test tier 3](https://github.com/brewlet/integration-tests/blob/main/e2e/tier3-runc.sh)
+exercises the real Linux/runc path against selected core and Kubernetes checkouts.
 
 ---
 
